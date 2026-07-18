@@ -17,7 +17,7 @@ export default async function AuthErrorPage({
       </p>
       <Link
         href="/login"
-        className="rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700"
+        className="btn-primary"
       >
         Pedir otro enlace
       </Link>

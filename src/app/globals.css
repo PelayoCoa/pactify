@@ -1,26 +1,130 @@
 @import "tailwindcss";
 
+/*
+ * Modo oscuro manual: antes "dark:" seguía @media (prefers-color-scheme:
+ * dark) sin más -no había forma de que el usuario lo forzara-. Ahora "dark:"
+ * responde a la clase .dark en <html> (la pone el script inline de
+ * layout.tsx, antes del primer pintado, para no dejar un parpadeo del tema
+ * equivocado). Si el usuario nunca tocó el interruptor, ese mismo script
+ * decide la clase mirando prefers-color-scheme -sigue siendo el default-,
+ * pero en cuanto elige a mano queda en localStorage y gana siempre a partir
+ * de ahí.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Acento de marca: teal. Se usa con moderación -enlaces activos, estados
+     "en curso", pines del mapa- no para repintar todos los botones. */
+  --accent: #0f6e56;
+  --accent-soft: #e1f5ee;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --font-sans: var(--font-jakarta);
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --accent: #5eead4;
+  --accent-soft: #042f2a;
+}
+
+/*
+ * Un PDF/impresión siempre se lee sobre papel blanco, esté en modo oscuro o
+ * no -si no se fuerza esto, "Guardar como PDF" en oscuro produce un documento
+ * con fondo casi negro-. !important porque .dark ya tiene más especificidad
+ * que un :root a secas y si no, ganaría él aunque se esté imprimiendo.
+ */
+@media print {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #ffffff !important;
+    --foreground: #171717 !important;
+  }
+  @page {
+    margin: 1.5cm;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/*
+ * Sistema de diseño mínimo: un solo sitio para el estilo de botones, campos,
+ * tarjetas y badges. Antes cada pantalla repetía su propia cadena de
+ * className casi-igual (y, en varios botones "primary", sin variante dark:,
+ * por lo que quedaban invisibles en modo oscuro). Ahora todas las pantallas
+ * usan estas clases y cambiar el estilo global es un cambio en un solo sitio.
+ */
+@layer components {
+  /*
+   * Tailwind v4: @apply solo puede aplicar utilidades reales, no otra clase
+   * propia definida con @apply en este mismo layer (`.btn-primary { @apply
+   * btn ... }` falla con "Cannot apply unknown utility class `btn`" aunque
+   * `.btn` esté definida arriba). Por eso cada variante repite la lista base
+   * de utilidades en vez de encadenar a una clase compartida.
+   */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 border border-neutral-300 bg-transparent text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm text-neutral-900 outline-none transition placeholder:text-neutral-400 focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:border-neutral-400;
+  }
+
+  .card {
+    @apply rounded-xl border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  .link-back {
+    @apply text-sm text-neutral-500 transition hover:text-neutral-800 hover:underline dark:hover:text-neutral-200;
+  }
+
+  .page {
+    @apply mx-auto flex min-h-screen max-w-2xl flex-col gap-6 p-6;
+  }
+
+  /* Avisos de color: mismo tono en todas las pantallas para el mismo tipo de mensaje. */
+  .alert {
+    @apply rounded-lg p-3 text-sm;
+  }
+  .alert-info {
+    @apply rounded-lg p-3 text-sm bg-violet-50 text-violet-900 dark:bg-violet-950/30 dark:text-violet-200;
+  }
+  .alert-success {
+    @apply rounded-lg p-3 text-sm bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300;
+  }
+  .alert-warning {
+    @apply rounded-lg p-3 text-sm bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300;
+  }
+  .alert-neutral {
+    @apply rounded-lg p-3 text-sm bg-neutral-100 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300;
+  }
+  .alert-error {
+    @apply rounded-lg p-3 text-sm bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300;
+  }
 }

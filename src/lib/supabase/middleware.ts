@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import type { Database } from '@/lib/types/database';
 
 /** Rutas accesibles sin sesión. Todo lo demás exige login. */
-const PUBLIC_PATHS = ['/', '/login', '/auth'];
+const PUBLIC_PATHS = ['/', '/login', '/auth', '/share'];
 
 function isPublic(pathname: string) {
   return PUBLIC_PATHS.some(

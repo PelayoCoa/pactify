@@ -53,6 +53,7 @@ export type Trip = {
   status: TripStatus;
   invite_code: string;
   regenerations_used: number;
+  photo_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,7 +87,8 @@ export type PreferenceCategory = {
 export type DestinationProposal = {
   id: string;
   trip_id: string;
-  user_id: string;
+  /** null = quien lo propuso borró su cuenta; la propuesta se conserva anonimizada. */
+  user_id: string | null;
   name: string;
   country: string | null;
   notes: string | null;
@@ -127,7 +129,8 @@ export type ItineraryActivity = {
 export type Vote = {
   id: string;
   activity_id: string;
-  user_id: string;
+  /** null = quien votó borró su cuenta; el voto se conserva anonimizado. */
+  user_id: string | null;
   value: VoteValue;
   comment: string | null;
   created_at: string;
@@ -159,6 +162,7 @@ export type Database = {
         | 'status'
         | 'invite_code'
         | 'regenerations_used'
+        | 'photo_url'
       >;
       trip_participants: TableOf<TripParticipant, 'role' | 'joined_at'>;
       preferences: TableOf<
@@ -201,6 +205,10 @@ export type Database = {
       };
       transfer_organizer: {
         Args: { p_trip_id: string; p_new_organizer: string };
+        Returns: undefined;
+      };
+      set_trip_photo: {
+        Args: { p_trip_id: string; p_photo_url: string | null };
         Returns: undefined;
       };
     };

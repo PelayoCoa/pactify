@@ -14,7 +14,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:opacity-50"
+      className="btn-primary"
     >
       {pending ? 'Enviando…' : 'Enviar enlace'}
     </button>
@@ -26,8 +26,8 @@ export function LoginForm({ next }: { next: string }) {
 
   if (state.status === 'sent') {
     return (
-      <div className="rounded-xl border border-neutral-200 p-5 text-sm dark:border-neutral-800">
-        <p className="font-medium">Revisa tu correo 📬</p>
+      <div className="card p-5 text-sm">
+        <p className="font-medium">Revisa tu correo</p>
         <p className="mt-1 text-neutral-500">{state.message}</p>
       </div>
     );
@@ -47,7 +47,7 @@ export function LoginForm({ next }: { next: string }) {
         required
         autoComplete="email"
         placeholder="tu@email.com"
-        className="rounded-lg border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:focus:border-neutral-400"
+        className="field"
       />
 
       <SubmitButton />

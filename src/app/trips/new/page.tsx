@@ -13,7 +13,7 @@ export default async function NewTripPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col gap-8 p-6">
-      <Link href="/dashboard" className="text-sm text-neutral-500 hover:underline">
+      <Link href="/dashboard" className="link-back">
         ← Mis viajes
       </Link>
       <div className="space-y-1">

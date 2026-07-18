@@ -13,7 +13,7 @@ function Submit() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium transition hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
+      className="btn-secondary"
     >
       {pending ? 'Uniéndote…' : 'Unirme'}
     </button>
@@ -31,7 +31,7 @@ export function JoinTripForm() {
           required
           placeholder="Código de invitación"
           autoCapitalize="characters"
-          className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm uppercase tracking-widest outline-none focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900"
+          className="field flex-1 uppercase tracking-widest"
         />
         <Submit />
       </div>

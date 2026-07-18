@@ -8,6 +8,7 @@ import {
   transferOrganizer,
   type TripFormState,
 } from '@/app/trips/actions';
+import { useConfirmDialog, type ConfirmOptions } from '@/components/ui/confirm-dialog-provider';
 
 type Member = { user_id: string; name: string };
 
@@ -16,19 +17,26 @@ const initial: TripFormState = {};
 function PendingButton({
   children,
   className,
-  confirmMsg,
+  confirmOptions,
 }: {
   children: React.ReactNode;
   className: string;
-  confirmMsg?: string;
+  /** Si se pasa, el submit espera a que el usuario confirme en el modal propio. */
+  confirmOptions?: ConfirmOptions;
 }) {
   const { pending } = useFormStatus();
+  const { confirm } = useConfirmDialog();
+
   return (
     <button
       type="submit"
       disabled={pending}
-      onClick={(e) => {
-        if (confirmMsg && !confirm(confirmMsg)) e.preventDefault();
+      onClick={async (e) => {
+        if (!confirmOptions) return; // sin confirmación pedida: deja que el form se envíe normal
+        e.preventDefault();
+        const form = e.currentTarget.form;
+        const ok = await confirm(confirmOptions);
+        if (ok) form?.requestSubmit();
       }}
       className={className}
     >
@@ -62,7 +70,7 @@ export function TripMembership({
               name="new_organizer"
               required
               defaultValue=""
-              className="flex-1 rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              className="field flex-1"
             >
               <option value="" disabled>
                 Elige participante…
@@ -74,7 +82,16 @@ export function TripMembership({
               ))}
             </select>
             <input type="hidden" name="trip_id" value={tripId} />
-            <PendingButton className="rounded-lg border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">
+            <PendingButton
+              className="btn-secondary"
+              confirmOptions={{
+                title: '¿Transferir el rol de organizador?',
+                description:
+                  'Perderás el control del viaje -presupuesto, configuración, cerrar la votación-. Tendría que devolvértelo la otra persona.',
+                confirmLabel: 'Transferir',
+                danger: true,
+              }}
+            >
               Transferir
             </PendingButton>
           </div>
@@ -90,10 +107,20 @@ export function TripMembership({
       <form action={leaveAction} className="flex flex-col gap-2">
         <input type="hidden" name="trip_id" value={tripId} />
         <PendingButton
-          confirmMsg={
+          confirmOptions={
             isOrganizer && alone
-              ? 'Eres el único. Si sales, el viaje se borra entero. ¿Seguro?'
-              : '¿Salir de este viaje?'
+              ? {
+                  title: 'Eres el único participante',
+                  description: 'Si sales, el viaje se borra entero -itinerario incluido-. No se puede deshacer.',
+                  confirmLabel: 'Salir y borrar el viaje',
+                  danger: true,
+                }
+              : {
+                  title: '¿Salir de este viaje?',
+                  description: 'Dejarás de ver este viaje y sus actividades.',
+                  confirmLabel: 'Salir del viaje',
+                  danger: true,
+                }
           }
           className="self-start rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
         >

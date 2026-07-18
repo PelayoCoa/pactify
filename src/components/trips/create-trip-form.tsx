@@ -14,15 +14,14 @@ function Submit() {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-700 disabled:opacity-50"
+      className="btn-primary"
     >
       {pending ? 'Creando…' : 'Crear viaje'}
     </button>
   );
 }
 
-const inputCls =
-  'rounded-lg border border-neutral-300 px-3 py-2.5 text-sm outline-none focus:border-neutral-900 dark:border-neutral-700 dark:bg-neutral-900';
+const inputCls = 'field';
 
 export function CreateTripForm() {
   const [state, formAction] = useActionState(createTrip, initial);

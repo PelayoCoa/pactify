@@ -139,7 +139,12 @@ on conflict (slug) do nothing;
 
 create table if not exists public.trips (
   id            uuid primary key default gen_random_uuid(),
-  organizer_id  uuid not null references public.profiles (id) on delete cascade,
+  -- on delete restrict a propósito: borrar un perfil NUNCA debe arrastrar en
+  -- cascada un viaje entero (con la gente y el itinerario de otros) solo
+  -- porque esa persona era la organizadora. La lógica de borrado de cuenta
+  -- transfiere el rol (o borra el viaje si estaba solo) ANTES de llegar aquí;
+  -- este RESTRICT es la red de seguridad si algún día eso falla.
+  organizer_id  uuid not null references public.profiles (id) on delete restrict,
   title         text not null,
   -- Destino ganador. Null hasta que la IA lo elige entre las propuestas.
   destination   text,
@@ -239,6 +244,27 @@ as $$
   );
 $$;
 
+-- ¿el usuario actual comparte al menos un viaje con `p_other`? Usado por la
+-- policy de SELECT de profiles para no exponer el email de todos los
+-- registrados a cualquier cuenta (ver migración 009). SECURITY DEFINER por el
+-- mismo motivo que is_trip_participant: consultar trip_participants bajo RLS
+-- provocaría la recursión que esas policies ya evitan.
+create or replace function public.shares_trip_with(p_other uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.trip_participants me
+    join public.trip_participants them on them.trip_id = me.trip_id
+    where me.user_id = auth.uid()
+      and them.user_id = p_other
+  );
+$$;
+
 -- -----------------------------------------------------------------------------
 -- 8. preferences — una fila por (viaje, persona)
 -- -----------------------------------------------------------------------------
@@ -276,14 +302,72 @@ create table if not exists public.preference_categories (
 
 create index if not exists preference_categories_pref_idx on public.preference_categories (preference_id);
 
+-- Bloqueo real tras confirmar: las policies de escritura solo miran
+-- user_id = auth.uid(), nada mira submitted_at. Sin este trigger, el dueño
+-- de la fila podría seguir escribiendo vía API directa tras confirmar,
+-- aunque la UI lo bloquee. (Mismo contenido que migrations/004.)
+create or replace function public.check_preferences_not_locked()
+returns trigger
+language plpgsql
+as $$
+begin
+  if TG_OP = 'DELETE' then
+    if old.submitted_at is not null then
+      raise exception 'PREFERENCES_LOCKED' using errcode = 'P0001';
+    end if;
+    return old;
+  end if;
+
+  if old.submitted_at is not null then
+    raise exception 'PREFERENCES_LOCKED' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists preferences_lock_guard on public.preferences;
+create trigger preferences_lock_guard
+  before update on public.preferences
+  for each row execute function public.check_preferences_not_locked();
+
+create or replace function public.check_preference_categories_not_locked()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_locked boolean;
+begin
+  select (submitted_at is not null) into v_locked
+    from public.preferences
+   where id = coalesce(new.preference_id, old.preference_id);
+
+  if v_locked then
+    raise exception 'PREFERENCES_LOCKED' using errcode = 'P0001';
+  end if;
+
+  if TG_OP = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists preference_categories_lock_guard on public.preference_categories;
+create trigger preference_categories_lock_guard
+  before insert or update or delete on public.preference_categories
+  for each row execute function public.check_preference_categories_not_locked();
+
 -- -----------------------------------------------------------------------------
 -- 9. destination_proposals — destinos que propone cada participante
 -- -----------------------------------------------------------------------------
 
 create table if not exists public.destination_proposals (
   id         uuid primary key default gen_random_uuid(),
-  trip_id    uuid not null references public.trips (id)    on delete cascade,
-  user_id    uuid not null references public.profiles (id) on delete cascade,
+  trip_id    uuid not null references public.trips (id) on delete cascade,
+  -- Nullable + set null: si quien propuso el sitio borra su cuenta, la
+  -- propuesta sigue siendo útil para el grupo. Queda "anonimizada" (sin
+  -- dueño) en vez de desaparecer con la persona.
+  user_id    uuid references public.profiles (id) on delete set null,
   name       text not null,
   country    text,
   notes      text,
@@ -377,7 +461,11 @@ create index if not exists itinerary_activities_version_idx on public.itinerary_
 create table if not exists public.votes (
   id          uuid primary key default gen_random_uuid(),
   activity_id uuid not null references public.itinerary_activities (id) on delete cascade,
-  user_id     uuid not null references public.profiles (id) on delete cascade,
+  -- Nullable + set null: el voto sobrevive al borrado de cuenta de quien lo
+  -- emitió, con autor null = anonimizado. Con CASCADE aquí sería imposible
+  -- cumplir "los votos se quedan pero anonimizados" — Postgres borraría la
+  -- fila entera, no dejaría nada que anonimizar.
+  user_id     uuid references public.profiles (id) on delete set null,
   value       vote_value not null,
   comment     text,
   created_at  timestamptz not null default now(),
@@ -406,6 +494,47 @@ as $$
    where a.id = p_activity_id;
 $$;
 
+-- Bloquea votos fuera de la ronda abierta: las policies de abajo solo miran
+-- user_id/participante, ninguna mira si la versión sigue siendo la actual o
+-- si el viaje sigue en 'voting'. Sin esto, se podría seguir votando una
+-- versión ya sustituida por una regeneración, o después de "decisión final".
+-- (Mismo contenido que migrations/005.)
+create or replace function public.check_vote_round_open()
+returns trigger
+language plpgsql
+as $$
+declare
+  v_is_current boolean;
+  v_status     trip_status;
+begin
+  select v.is_current, t.status
+    into v_is_current, v_status
+    from public.itinerary_activities a
+    join public.itinerary_versions v on v.id = a.version_id
+    join public.trips t on t.id = v.trip_id
+   where a.id = new.activity_id;
+
+  if v_is_current is null then
+    raise exception 'ACTIVITY_NOT_FOUND' using errcode = 'P0001';
+  end if;
+
+  if not v_is_current then
+    raise exception 'VOTE_ON_OLD_VERSION' using errcode = 'P0001';
+  end if;
+
+  if v_status <> 'voting' then
+    raise exception 'VOTING_CLOSED' using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists votes_round_open_guard on public.votes;
+create trigger votes_round_open_guard
+  before insert or update on public.votes
+  for each row execute function public.check_vote_round_open();
+
 -- =============================================================================
 -- 13. Row Level Security
 --     Regla de oro: solo ves un viaje si eres participante; solo escribes tus
@@ -424,11 +553,18 @@ alter table public.itinerary_activities  enable row level security;
 alter table public.votes                 enable row level security;
 
 -- profiles ---------------------------------------------------------------
+-- Solo tu propio perfil, o el de alguien con quien compartes un viaje. Antes
+-- era using(true), que dejaba a cualquier cuenta leer el email de TODOS los
+-- registrados (ver migración 009). La app solo necesita ver a compañeros de
+-- viaje (lista de participantes, propuestas, contexto de la IA).
 drop policy if exists "perfiles visibles para usuarios autenticados" on public.profiles;
 create policy "perfiles visibles para usuarios autenticados"
   on public.profiles for select
   to authenticated
-  using (true);
+  using (
+    id = auth.uid()
+    or public.shares_trip_with(id)
+  );
 
 drop policy if exists "cada uno edita su perfil" on public.profiles;
 create policy "cada uno edita su perfil"
