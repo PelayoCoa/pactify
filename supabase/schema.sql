@@ -53,13 +53,29 @@ begin
 end;
 $$;
 
--- Código corto para compartir el viaje (p. ej. "K3F9QZ").
+-- Código corto para compartir el viaje (p. ej. "K3F9QZ"). Alfabeto de 32
+-- símbolos sin 0, O, 1, I, L -evita ambigüedad al escribirlo a mano- (ver
+-- migración 010; los códigos generados antes de esa migración se quedan
+-- como estaban, con el alfabeto hexadecimal original).
 create or replace function public.generate_invite_code()
 returns text
-language sql
+language plpgsql
 volatile
 as $$
-  select upper(substring(encode(gen_random_bytes(6), 'hex') from 1 for 6));
+declare
+  alphabet text := '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  alen int := length(alphabet);
+  raw bytea := gen_random_bytes(6);
+  result text := '';
+  i int;
+begin
+  for i in 0..5 loop
+    -- 256 (rango de un byte) es múltiplo exacto de 32: el módulo no sesga
+    -- ningún carácter del alfabeto.
+    result := result || substr(alphabet, 1 + (get_byte(raw, i) % alen), 1);
+  end loop;
+  return result;
+end;
 $$;
 
 -- -----------------------------------------------------------------------------
